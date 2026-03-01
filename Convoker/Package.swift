@@ -18,5 +18,10 @@ let package = Package(
             ],
             path: "App"
         ),
+        .testTarget(
+            name: "ConvokerTests",
+            dependencies: ["Convoker"],
+            path: "Tests"
+        ),
     ]
 )
