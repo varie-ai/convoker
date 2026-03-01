@@ -1,0 +1,16 @@
+# Build
+.build/
+.swiftpm/
+dist/
+DerivedData/
+*.xcodeproj/xcuserdata/
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# IDE
+.idea/
+.vscode/
+*.xcworkspace/xcuserdata/
