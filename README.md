@@ -21,8 +21,9 @@
 
 ---
 
-<!-- TODO: Replace with actual demo GIF -->
-<!-- ![Convoker demo](screenshots/demo.gif) -->
+<p align="center">
+  <img src="screenshots/demo.gif" alt="Convoker demo — focus, split, and gather" width="960">
+</p>
 
 ## The Problem
 
