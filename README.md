@@ -25,6 +25,18 @@
   <img src="screenshots/gifs/small_hero_final.gif" alt="Convoker demo — focus, split, and gather" width="960">
 </p>
 
+## Quick Start
+
+1. Launch Convoker — it lives in your **menu bar**
+2. Press **Cmd+Shift+X** to open the command palette
+3. Type an app name → **Enter** to gather its windows
+
+<p align="center">
+  <img src="screenshots/menu_bar.png" alt="Convoker menu bar icon" width="240">
+</p>
+
+> Right-click the menu bar icon for Settings (change hotkey) or to quit.
+
 ## The Problem
 
 You have 6 Safari windows scattered across 3 monitors. Or Terminal sessions everywhere. You want them *here*, on *this* screen, right now.
@@ -66,6 +78,7 @@ The hotkey is configurable in Settings (tray icon > Settings).
 1. Download the latest `.dmg` from [Releases](https://github.com/varie-ai/convoker/releases/latest)
 2. Drag **Convoker.app** to `/Applications`
 3. Launch Convoker — grant Accessibility permission when prompted
+4. Look for the Convoker icon in your **menu bar**, then press **Cmd+Shift+X**
 
 ### Build from source
 
