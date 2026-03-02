@@ -22,7 +22,7 @@
 ---
 
 <p align="center">
-  <img src="screenshots/demo.gif" alt="Convoker demo — focus, split, and gather" width="960">
+  <img src="screenshots/gifs/small_hero_final.gif" alt="Convoker demo — focus, split, and gather" width="960">
 </p>
 
 ## The Problem

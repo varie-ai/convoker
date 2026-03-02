@@ -40,10 +40,10 @@ class AppCatalog {
         for dir in searchDirs {
             guard let contents = try? fm.contentsOfDirectory(
                 at: dir, includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
+                options: []
             ) else { continue }
 
-            for url in contents where url.pathExtension == "app" {
+            for url in contents where url.pathExtension == "app" && !url.lastPathComponent.hasPrefix(".") {
                 guard let bundle = Bundle(url: url),
                       let bundleID = bundle.bundleIdentifier,
                       !seen.contains(bundleID) else { continue }
