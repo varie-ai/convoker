@@ -19,11 +19,16 @@ final class ViewModelTests: XCTestCase {
         )
     }
 
+    /// Set filteredItems from an array of mock apps (wraps in PaletteItem.app).
+    private func setItems(_ vm: CommandPaletteViewModel, _ apps: [AppInfo]) {
+        vm.filteredItems = apps.map { .app($0) }
+    }
+
     // MARK: - moveSelection
 
     func testMoveSelectionDown_fromNil_selectsFirst() {
         let vm = CommandPaletteViewModel()
-        vm.filteredApps = [mockApp("Safari"), mockApp("Chrome"), mockApp("Firefox")]
+        setItems(vm, [mockApp("Safari"), mockApp("Chrome"), mockApp("Firefox")])
         vm.selectedIndex = nil
 
         vm.moveSelection(by: 1)
@@ -32,7 +37,7 @@ final class ViewModelTests: XCTestCase {
 
     func testMoveSelectionUp_fromNil_selectsLast() {
         let vm = CommandPaletteViewModel()
-        vm.filteredApps = [mockApp("Safari"), mockApp("Chrome"), mockApp("Firefox")]
+        setItems(vm, [mockApp("Safari"), mockApp("Chrome"), mockApp("Firefox")])
         vm.selectedIndex = nil
 
         vm.moveSelection(by: -1)
@@ -41,7 +46,7 @@ final class ViewModelTests: XCTestCase {
 
     func testMoveSelection_wrapsForward() {
         let vm = CommandPaletteViewModel()
-        vm.filteredApps = [mockApp("Safari"), mockApp("Chrome")]
+        setItems(vm, [mockApp("Safari"), mockApp("Chrome")])
         vm.selectedIndex = 1
 
         vm.moveSelection(by: 1)
@@ -50,7 +55,7 @@ final class ViewModelTests: XCTestCase {
 
     func testMoveSelection_wrapsBackward() {
         let vm = CommandPaletteViewModel()
-        vm.filteredApps = [mockApp("Safari"), mockApp("Chrome")]
+        setItems(vm, [mockApp("Safari"), mockApp("Chrome")])
         vm.selectedIndex = 0
 
         vm.moveSelection(by: -1)
@@ -59,7 +64,7 @@ final class ViewModelTests: XCTestCase {
 
     func testMoveSelection_emptyList_noOp() {
         let vm = CommandPaletteViewModel()
-        vm.filteredApps = []
+        setItems(vm, [])
         vm.selectedIndex = nil
 
         vm.moveSelection(by: 1)
@@ -68,7 +73,7 @@ final class ViewModelTests: XCTestCase {
 
     func testMoveSelection_singleItem_staysAtZero() {
         let vm = CommandPaletteViewModel()
-        vm.filteredApps = [mockApp("Safari")]
+        setItems(vm, [mockApp("Safari")])
         vm.selectedIndex = 0
 
         vm.moveSelection(by: 1)
@@ -80,7 +85,7 @@ final class ViewModelTests: XCTestCase {
     func testPinSelected_addsToStack() {
         let vm = CommandPaletteViewModel()
         let safari = mockApp("Safari")
-        vm.filteredApps = [safari, mockApp("Chrome")]
+        setItems(vm, [safari, mockApp("Chrome")])
         vm.selectedIndex = 0
 
         vm.pinSelected()
@@ -98,14 +103,14 @@ final class ViewModelTests: XCTestCase {
 
         // Pin 3 apps
         for i in 0..<3 {
-            vm.filteredApps = apps
+            setItems(vm, apps)
             vm.selectedIndex = i
             vm.pinSelected()
         }
         XCTAssertEqual(vm.pinnedApps.count, 3)
 
         // Try to pin a 4th — should be no-op
-        vm.filteredApps = apps
+        setItems(vm, apps)
         vm.selectedIndex = 3
         vm.pinSelected()
         XCTAssertEqual(vm.pinnedApps.count, 3) // still 3
@@ -113,7 +118,7 @@ final class ViewModelTests: XCTestCase {
 
     func testPinSelected_noSelection_noOp() {
         let vm = CommandPaletteViewModel()
-        vm.filteredApps = [mockApp("Safari")]
+        setItems(vm, [mockApp("Safari")])
         vm.selectedIndex = nil
 
         vm.pinSelected()
@@ -172,7 +177,7 @@ final class ViewModelTests: XCTestCase {
 
     func testExecuteAction_normalNoSelection_noOp() {
         let vm = CommandPaletteViewModel()
-        vm.filteredApps = [mockApp("Safari")]
+        setItems(vm, [mockApp("Safari")])
         vm.selectedIndex = nil
         vm.mode = .normal
 
@@ -185,13 +190,13 @@ final class ViewModelTests: XCTestCase {
 
     func testUpdateFiltered_clampsOverflowSelection() {
         let vm = CommandPaletteViewModel()
-        vm.filteredApps = [mockApp("Safari"), mockApp("Chrome")]
+        setItems(vm, [mockApp("Safari"), mockApp("Chrome")])
         vm.selectedIndex = 5 // overflow
 
         vm.updateFiltered()
         // After update, selectedIndex should be clamped
         if let idx = vm.selectedIndex {
-            XCTAssertLessThan(idx, vm.filteredApps.count)
+            XCTAssertLessThan(idx, vm.filteredItems.count)
         }
     }
 
@@ -201,5 +206,35 @@ final class ViewModelTests: XCTestCase {
 
         vm.updateFiltered()
         XCTAssertNil(vm.selectedIndex)
+    }
+
+    // MARK: - Workspace Mode
+
+    func testSaveMode_enterAndExit() {
+        let vm = CommandPaletteViewModel()
+        vm.enterSaveMode()
+        XCTAssertTrue(vm.isSaving)
+        XCTAssertEqual(vm.searchText, "")
+        XCTAssertTrue(vm.filteredItems.isEmpty)
+
+        // Exit save mode via escape (simulated)
+        vm.mode = .normal
+        vm.updateFiltered()
+        XCTAssertFalse(vm.isSaving)
+    }
+
+    func testIsSaveKeyword() {
+        let vm = CommandPaletteViewModel()
+        vm.searchText = "save"
+        XCTAssertTrue(vm.isSaveKeyword)
+
+        vm.searchText = "Save"
+        XCTAssertTrue(vm.isSaveKeyword)
+
+        vm.searchText = "  save  "
+        XCTAssertTrue(vm.isSaveKeyword)
+
+        vm.searchText = "safari"
+        XCTAssertFalse(vm.isSaveKeyword)
     }
 }

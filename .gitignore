@@ -1,16 +1,32 @@
-# Build
-.build/
-.swiftpm/
-dist/
+# Xcode / DerivedData
 DerivedData/
 *.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+xcuserdata/
+
+# Build artifacts
+.build/
+*.app
+*.dmg
+*.dSYM
+
+# SPM
+.swiftpm/
+Convoker/.swiftpm/
+Convoker/.build/
+Package.resolved
 
 # macOS
 .DS_Store
-*.swp
-*~
+**/.DS_Store
 
 # IDE
+*.swp
+*.swo
+*~
 .idea/
-.vscode/
-*.xcworkspace/xcuserdata/
+
+# Swift build artifacts
+*.d
+*.o
+*.swiftdeps

@@ -17,7 +17,7 @@ class PanelManager {
         self.viewModel = vm
 
         let panel = FloatingPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 600, height: 400)
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 400)
         )
 
         let contentView = CommandPaletteView(viewModel: vm)
@@ -97,6 +97,18 @@ class PanelManager {
             if event.keyCode == 36, flags == .option {
                 Task { @MainActor in
                     vm.executeAction(rightSide: true)
+                }
+                return nil
+            }
+
+            // Cmd+Shift+S (keyCode 1) — save workspace from pins
+            if event.keyCode == 1, flags == [.command, .shift] {
+                Task { @MainActor in
+                    if vm.isPinned {
+                        vm.saveFromPins()
+                    } else {
+                        vm.enterSaveMode()
+                    }
                 }
                 return nil
             }

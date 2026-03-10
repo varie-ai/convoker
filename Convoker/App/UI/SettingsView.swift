@@ -41,11 +41,23 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Workspaces") {
+                if WorkspaceStore.shared.workspaces.isEmpty {
+                    Text("No saved workspaces")
+                        .foregroundStyle(.secondary)
+                        .font(.system(size: 13))
+                } else {
+                    ForEach(WorkspaceStore.shared.workspaces) { workspace in
+                        WorkspaceSettingsRow(workspace: workspace)
+                    }
+                }
+            }
+
             Section("About") {
                 HStack {
                     Text("Version")
                     Spacer()
-                    Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.3")
+                    Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.4")
                         .foregroundStyle(.secondary)
                 }
             }
@@ -53,5 +65,49 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 440)
         .fixedSize()
+    }
+}
+
+/// A single workspace row in the settings panel.
+struct WorkspaceSettingsRow: View {
+    let workspace: Workspace
+    @State private var hideOthers: Bool
+
+    init(workspace: Workspace) {
+        self.workspace = workspace
+        _hideOthers = State(initialValue: workspace.hideOthers)
+    }
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(workspace.name)
+                    .font(.system(size: 13, weight: .medium))
+                Text(workspace.appSummary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Toggle("Hide others", isOn: $hideOthers)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .labelsHidden()
+                .onChange(of: hideOthers) { _, newValue in
+                    var updated = workspace
+                    updated.hideOthers = newValue
+                    WorkspaceStore.shared.save(updated)
+                }
+
+            Button(role: .destructive) {
+                WorkspaceStore.shared.delete(workspace)
+            } label: {
+                Image(systemName: "trash")
+                    .foregroundStyle(.red.opacity(0.7))
+            }
+            .buttonStyle(.borderless)
+        }
     }
 }

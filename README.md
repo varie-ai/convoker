@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  Per-app window control for macOS. Gather, focus, or split — all windows of one app at once.
+  Per-app window control, app launcher, and workspace management for macOS.
 </p>
 
 <p align="center">
@@ -51,6 +51,8 @@ Existing tools snap **individual windows**. Convoker operates on **all windows o
 
 **Split** — Pin one app, pick another, get instant side-by-side (or 3-way, or 4-way).
 
+**Workspaces** — Save your app arrangement as a named workspace. Type the name, press Enter — apps launch, windows arrange, distractions hide. Works across multiple monitors.
+
 **Launch** — App not running? Convoker launches it and arranges its windows automatically.
 
 **Layout options** — Grid (default), cascade, side-by-side, or columns.
@@ -66,6 +68,8 @@ Press **Cmd+Shift+X** to open the palette, then:
 | **Cmd+Enter** | Focus (activate + hide all others) |
 | **Tab** | Pin app for split (up to 4 apps) |
 | **Tab, then Enter** | Split pinned apps side-by-side |
+| **Cmd+Shift+S** | Save pinned apps as a workspace |
+| Type **"save"** | Save current screen as a workspace |
 | **Escape** | Dismiss (or unpin last) |
 | **Arrow keys** | Navigate the app list |
 

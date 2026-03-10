@@ -30,7 +30,6 @@ enum WindowGatherer {
     /// Launch a non-running app, wait for its first window, then gather.
     static func launchAndGather(app: AppInfo, maximize: Bool = false) async {
         guard let bundleURL = app.bundleURL else { return }
-        let targetFrame = await MainActor.run { Self.cursorScreenFrame() }
 
         let config = NSWorkspace.OpenConfiguration()
         config.activates = true
@@ -157,6 +156,293 @@ enum WindowGatherer {
         // 15s timeout — app is running but never showed a window; nothing to layout
     }
 
+    // MARK: - Workspace Recall
+
+    /// Execute a workspace recipe: launch missing apps, gather each to its region, hide others.
+    static func recallWorkspace(_ workspace: Workspace) async {
+        let screenFrames = await MainActor.run { resolveScreenTargets() }
+
+        // Separate running vs needs-launch
+        let runningApps = NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy == .regular }
+
+        var launchTasks: [(AppAssignment, Task<pid_t?, Never>)] = []
+
+        for assignment in workspace.assignments {
+            let isRunning = runningApps.contains { $0.bundleIdentifier == assignment.bundleID }
+            if !isRunning && assignment.launchIfNeeded {
+                let bundleID = assignment.bundleID
+                let task = Task<pid_t?, Never> {
+                    guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return nil }
+                    let config = NSWorkspace.OpenConfiguration()
+                    config.activates = false
+                    if let app = try? await NSWorkspace.shared.openApplication(at: url, configuration: config) {
+                        return app.processIdentifier
+                    }
+                    return nil
+                }
+                launchTasks.append((assignment, task))
+            }
+        }
+
+        // Layout running apps immediately
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                performWorkspaceLayout(workspace: workspace, screenFrames: screenFrames, runningApps: runningApps)
+                continuation.resume()
+            }
+        }
+
+        // Hide others if configured
+        if workspace.hideOthers {
+            let assignedBundleIDs = Set(workspace.assignments.map(\.bundleID))
+            await MainActor.run {
+                for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular {
+                    if let bid = app.bundleIdentifier, !assignedBundleIDs.contains(bid) {
+                        app.hide()
+                    }
+                }
+            }
+        }
+
+        // Monitor launched apps and place when windows appear
+        for (assignment, launchTask) in launchTasks {
+            let targetFrame = screenFrames[assignment.screen] ?? screenFrames[.primary]!
+            let resolvedRegion = assignment.region.resolve(in: targetFrame)
+            Task {
+                guard let pid = await launchTask.value else { return }
+                await monitorAndPlace(pid: pid, region: resolvedRegion)
+            }
+        }
+
+        // Give focus to first running assigned app
+        if let first = workspace.assignments.first,
+           let runningApp = runningApps.first(where: { $0.bundleIdentifier == first.bundleID }) {
+            let app = runningApp
+            await MainActor.run { _ = app.activate() }
+        }
+    }
+
+    /// Layout all running apps in a workspace to their assigned regions.
+    private static func performWorkspaceLayout(workspace: Workspace, screenFrames: [ScreenTarget: CGRect], runningApps: [NSRunningApplication]) {
+        // Build pid lookup
+        let pidByBundleID: [String: pid_t] = Dictionary(
+            runningApps.compactMap { app in
+                guard let bid = app.bundleIdentifier else { return nil }
+                return (bid, app.processIdentifier)
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        // Group assignments by bundleID so we handle multi-screen apps correctly.
+        // An app like Finder might have assignments on both primary and secondary.
+        var assignmentsByApp: [String: [AppAssignment]] = [:]
+        for a in workspace.assignments {
+            assignmentsByApp[a.bundleID, default: []].append(a)
+        }
+
+        // Process apps in z-order (backmost first so frontmost ends up activated last)
+        let uniqueApps = assignmentsByApp.keys.sorted { a, b in
+            let zA = assignmentsByApp[a]!.first!.zOrder
+            let zB = assignmentsByApp[b]!.first!.zOrder
+            return zA > zB  // highest zOrder (backmost) first
+        }
+
+        var allWindowSets: [(zOrder: Int, windows: [AccessibilityElement], region: CGRect)] = []
+
+        for bundleID in uniqueApps {
+            guard let pid = pidByBundleID[bundleID] else { continue }
+            let appAssignments = assignmentsByApp[bundleID]!
+
+            let appElement = AccessibilityElement.from(pid: pid)
+            appElement.setTimeout(1.0)
+            exitFullscreen(appElement: appElement)
+            activateApp(pid: pid)
+            unminimizeAll(appElement: appElement)
+
+            let windows = appElement.getWindows().filter { $0.isGatherableWindow }
+            let zOrder = appAssignments.first!.zOrder
+
+            if appAssignments.count == 1 {
+                // Single-screen assignment: all windows go to one region
+                let a = appAssignments[0]
+                let targetFrame = screenFrames[a.screen] ?? screenFrames[.primary]!
+                let resolvedRegion = a.region.resolve(in: targetFrame)
+
+                if windows.isEmpty {
+                    allWindowSets.append((zOrder, [], resolvedRegion))
+                } else {
+                    layoutWindows(windows, in: resolvedRegion, maximize: true, gap: 0)
+                    allWindowSets.append((zOrder, windows, resolvedRegion))
+                }
+            } else {
+                // Multi-screen: distribute windows across assignments proportionally
+                // to the saved windowCount per screen.
+                let totalSaved = appAssignments.reduce(0) { $0 + max($1.windowCount, 1) }
+                var windowIndex = 0
+
+                for a in appAssignments {
+                    let targetFrame = screenFrames[a.screen] ?? screenFrames[.primary]!
+                    let resolvedRegion = a.region.resolve(in: targetFrame)
+
+                    // Proportional window count, at least 1 if windows remain
+                    let proportion = max(a.windowCount, 1)
+                    var count = windows.isEmpty ? 0 : max(1, windows.count * proportion / totalSaved)
+                    // Last assignment gets all remaining
+                    if a.id == appAssignments.last!.id {
+                        count = windows.count - windowIndex
+                    }
+                    count = min(count, windows.count - windowIndex)
+
+                    let subset = Array(windows[windowIndex..<(windowIndex + count)])
+                    windowIndex += count
+
+                    if subset.isEmpty {
+                        allWindowSets.append((zOrder, [], resolvedRegion))
+                    } else {
+                        layoutWindows(subset, in: resolvedRegion, maximize: true, gap: 0)
+                        allWindowSets.append((zOrder, subset, resolvedRegion))
+                    }
+                }
+            }
+        }
+
+        // Re-apply pass: fix displacement from later app activations
+        Thread.sleep(forTimeInterval: 0.1)
+        for (_, windows, region) in allWindowSets where !windows.isEmpty {
+            let frames = LayoutEngine.layout(windowCount: windows.count, in: region, gap: 0)
+            for (j, window) in windows.enumerated() where j < frames.count {
+                window.setFrame(frames[j])
+            }
+        }
+
+        // Stray verification
+        for (_, windows, region) in allWindowSets where !windows.isEmpty {
+            let frames = LayoutEngine.layout(windowCount: windows.count, in: region, gap: 0)
+            verifyAndFixStrays(windows, frames: frames)
+        }
+
+        // Raise in z-order: highest zOrder (backmost) first, so frontmost app
+        // (zOrder 0) is raised last and ends up on top.
+        let raiseOrder = allWindowSets.sorted { $0.zOrder > $1.zOrder }
+        for (_, windows, _) in raiseOrder {
+            for window in windows.reversed() {
+                window.raise()
+                Thread.sleep(forTimeInterval: 0.01)
+            }
+        }
+        // Focus the frontmost app (lowest zOrder)
+        let frontmost = workspace.assignments.min(by: { $0.zOrder < $1.zOrder })
+        if let frontmost, let pid = pidByBundleID[frontmost.bundleID] {
+            let el = AccessibilityElement.from(pid: pid)
+            el.setFrontmost(true)
+        }
+    }
+
+    // MARK: - Region Inference (for workspace save)
+
+    /// Inspect all visible apps and infer their regions on each screen.
+    /// Returns AppAssignment array ready for workspace creation.
+    @MainActor
+    static func inferCurrentLayout() -> [AppAssignment] {
+        let screens = resolveScreenTargets()
+        let screenOrder: [ScreenTarget] = [.primary, .secondary, .tertiary]
+        let runningApps = NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy == .regular && !$0.isHidden }
+
+        // Get z-order from the window server (front-to-back).
+        let appZOrder = Self.computeAppZOrder()
+
+        var assignments: [AppAssignment] = []
+        var seen = Set<String>()
+
+        for app in runningApps {
+            guard let bundleID = app.bundleIdentifier,
+                  !seen.contains(bundleID) else { continue }
+
+            let pid = app.processIdentifier
+            let appElement = AccessibilityElement.from(pid: pid)
+            appElement.setTimeout(0.3)
+            let windows = appElement.getWindows().filter { $0.isGatherableWindow }
+            guard !windows.isEmpty else { continue }
+
+            // Group windows by which screen they're on (center-point match).
+            // This creates one assignment per (app, screen) pair, preserving
+            // multi-screen window distributions (e.g., Finder on both screens).
+            var windowsByScreen: [ScreenTarget: [CGRect]] = [:]
+
+            for window in windows {
+                guard let frame = window.getFrame() else { continue }
+                let center = CGPoint(x: frame.midX, y: frame.midY)
+
+                var matched: ScreenTarget = .primary
+                for target in screenOrder {
+                    guard let screenFrame = screens[target] else { continue }
+                    if screenFrame.contains(center) {
+                        matched = target
+                        break
+                    }
+                }
+                windowsByScreen[matched, default: []].append(frame)
+            }
+
+            let zOrder = appZOrder[bundleID] ?? assignments.count
+            let appName = app.localizedName ?? "Unknown"
+
+            for (screenTarget, frames) in windowsByScreen {
+                // Compute bounding box for this app's windows on this screen
+                let minX = frames.map(\.minX).min()!
+                let minY = frames.map(\.minY).min()!
+                let maxX = frames.map(\.maxX).max()!
+                let maxY = frames.map(\.maxY).max()!
+                let boundingBox = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+
+                let screenFrame = screens[screenTarget] ?? screens[.primary]!
+                let region = Region.infer(from: boundingBox, in: screenFrame)
+
+                assignments.append(AppAssignment(
+                    bundleID: bundleID,
+                    appName: appName,
+                    screen: screenTarget,
+                    region: region,
+                    zOrder: zOrder,
+                    windowCount: frames.count
+                ))
+            }
+
+            seen.insert(bundleID)
+        }
+
+        return assignments
+    }
+
+    /// Get front-to-back z-order of apps from the window server.
+    /// Returns bundleID → z-order index (0 = frontmost).
+    private static func computeAppZOrder() -> [String: Int] {
+        guard let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+            return [:]
+        }
+
+        var zOrder: [String: Int] = [:]
+        var nextIndex = 0
+
+        for info in windowList {
+            guard let ownerPID = info[kCGWindowOwnerPID as String] as? pid_t,
+                  let layer = info[kCGWindowLayer as String] as? Int,
+                  layer == 0 else { continue }  // Normal window layer only
+
+            // Look up bundle ID from PID
+            if let app = NSRunningApplication(processIdentifier: ownerPID),
+               let bundleID = app.bundleIdentifier,
+               zOrder[bundleID] == nil {
+                zOrder[bundleID] = nextIndex
+                nextIndex += 1
+            }
+        }
+
+        return zOrder
+    }
+
     // MARK: - Screen targeting (Approach B)
 
     /// Get the visible frame of the screen under the cursor, in AX coordinates.
@@ -172,6 +458,40 @@ enum WindowGatherer {
         }
 
         return visibleFrameInAXCoords(for: screen)
+    }
+
+    /// Resolve screen targets to actual screen frames in AX coordinates.
+    @MainActor
+    static func resolveScreenTargets() -> [ScreenTarget: CGRect] {
+        let screens = NSScreen.screens
+        var result: [ScreenTarget: CGRect] = [:]
+
+        // Primary = screens[0], which is ALWAYS the menu bar screen regardless
+        // of which screen has keyboard focus. NSScreen.main changes with focus
+        // and would swap primary/secondary when invoking from a different screen.
+        guard let menuBarScreen = screens.first else { return result }
+        result[.primary] = visibleFrameInAXCoords(for: menuBarScreen)
+
+        // Secondary/tertiary = non-primary screens sorted by x-position (left-to-right)
+        // for consistent ordering across save and recall.
+        let nonPrimary = screens.dropFirst()
+            .sorted { $0.frame.origin.x < $1.frame.origin.x }
+        if nonPrimary.count >= 1 {
+            result[.secondary] = visibleFrameInAXCoords(for: nonPrimary[0])
+        }
+        if nonPrimary.count >= 2 {
+            result[.tertiary] = visibleFrameInAXCoords(for: nonPrimary[1])
+        }
+
+        // Cursor = current cursor screen
+        let mouseLocation = NSEvent.mouseLocation
+        let cursorScreen = screens.first { NSMouseInRect(mouseLocation, $0.frame, false) }
+            ?? NSScreen.main ?? screens.first
+        if let cursorScreen {
+            result[.cursor] = visibleFrameInAXCoords(for: cursorScreen)
+        }
+
+        return result
     }
 
     /// Convert a screen's visibleFrame from AppKit coords (bottom-left origin)
