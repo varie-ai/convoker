@@ -68,8 +68,7 @@ Press **Cmd+Shift+X** to open the palette, then:
 | **Cmd+Enter** | Focus (activate + hide all others) |
 | **Tab** | Pin app for split (up to 4 apps) |
 | **Tab, then Enter** | Split pinned apps side-by-side |
-| **Cmd+Shift+S** | Save pinned apps as a workspace |
-| Type **"save"** | Save current screen as a workspace |
+| **Cmd+Shift+S** or type **"save"** | Save current layout as a workspace |
 | **Escape** | Dismiss (or unpin last) |
 | **Arrow keys** | Navigate the app list |
 
