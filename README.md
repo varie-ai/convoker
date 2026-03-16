@@ -32,7 +32,7 @@
 3. Type an app name → **Enter** to gather its windows
 
 <p align="center">
-  <img src="screenshots/menu_bar.png" alt="Convoker menu bar icon" width="240">
+  <img src="screenshots/manu_bar_icon.png" alt="Convoker menu bar icon" width="240">
 </p>
 
 > Right-click the menu bar icon for Settings (change hotkey) or to quit.
