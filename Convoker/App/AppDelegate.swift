@@ -47,13 +47,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setupApp() {
-        // Create the command palette panel and settings window
+        // Create the command palette panel, settings window, and onboarding
         PanelManager.shared.create()
         SettingsManager.shared.create()
+        OnboardingManager.shared.create()
 
         // Register global hotkey
         KeyboardShortcuts.onKeyUp(for: .showPanel) {
             PanelManager.shared.toggle()
+        }
+
+        // Show onboarding if needed
+        switch OnboardingTracker.launchAction() {
+        case .fullTutorial:
+            OnboardingManager.shared.showTutorial()
+        case .whatsNew(let features):
+            OnboardingManager.shared.showWhatsNew(features)
+        case .none:
+            break
         }
     }
 

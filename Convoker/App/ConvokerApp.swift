@@ -18,6 +18,10 @@ struct ConvokerApp: App {
                 }
                 .keyboardShortcut(",")
 
+                Button("Tutorial...") {
+                    OnboardingManager.shared.showTutorial()
+                }
+
                 Divider()
 
                 Button("Quit Convoker") {

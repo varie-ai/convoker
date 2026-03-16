@@ -55,6 +55,7 @@ class PanelManager {
         panel.orderFront(nil)
         panel.makeKey()
         installKeyMonitor()
+        NotificationCenter.default.post(name: .convokerPaletteDidShow, object: nil)
     }
 
     func hide() {

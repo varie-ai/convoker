@@ -116,6 +116,10 @@ class CommandPaletteViewModel: ObservableObject {
 
         filteredItems = items
 
+        if searchText.count >= 2 {
+            NotificationCenter.default.post(name: .convokerSearchDidType, object: nil)
+        }
+
         // Auto-select top match only when user has typed something
         if !searchText.isEmpty && !filteredItems.isEmpty {
             selectedIndex = 0
@@ -144,6 +148,7 @@ class CommandPaletteViewModel: ObservableObject {
         guard case .app(let app) = filteredItems[idx] else { return }
         UsageTracker.recordAction(bundleID: app.bundleID)
         PanelManager.shared.hide()
+        NotificationCenter.default.post(name: .convokerDidGather, object: nil)
         Task {
             if app.isRunning {
                 await WindowGatherer.gather(app: app, maximize: maximize)
@@ -158,6 +163,7 @@ class CommandPaletteViewModel: ObservableObject {
         guard case .app(let app) = filteredItems[idx] else { return }
         UsageTracker.recordAction(bundleID: app.bundleID)
         PanelManager.shared.hide()
+        NotificationCenter.default.post(name: .convokerDidFocus, object: nil)
         Task {
             await WindowGatherer.focus(app: app)
         }
@@ -181,6 +187,7 @@ class CommandPaletteViewModel: ObservableObject {
         searchText = ""
         selectedIndex = nil
         updateFiltered()
+        NotificationCenter.default.post(name: .convokerDidPinForSplit, object: nil)
     }
 
     func unpin() {
@@ -207,6 +214,7 @@ class CommandPaletteViewModel: ObservableObject {
             UsageTracker.recordAction(bundleID: app.bundleID)
         }
         PanelManager.shared.hide()
+        NotificationCenter.default.post(name: .convokerDidSplit, object: nil)
         Task {
             await WindowGatherer.split(apps: allApps, rightSide: rightSide)
         }
@@ -229,6 +237,7 @@ class CommandPaletteViewModel: ObservableObject {
         let assignments = WindowGatherer.inferCurrentLayout()
         _ = WorkspaceStore.shared.saveOrOverwrite(name: name, assignments: assignments)
         PanelManager.shared.hide()
+        NotificationCenter.default.post(name: .convokerDidSaveWorkspace, object: nil)
     }
 
     /// Save pinned apps as a workspace (Cmd+Shift+S from pin mode).
